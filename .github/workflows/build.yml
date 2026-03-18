@@ -10,11 +10,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         kernel_version: [5.10.0, 6.1.0, 6.6.0]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install deps
       run: |
@@ -26,7 +27,11 @@ jobs:
       run: |
         KERNEL_VERSION=${{ matrix.kernel_version }}
         BASE_URL="http://kernel.ubuntu.com/~kernel-ppa/mainline/v${KERNEL_VERSION}/"
-        DEB_FILE=$(wget -qO- "$BASE_URL" | grep -o 'linux-headers-[^" ]*amd64.deb' | head -1)
+        for i in 1 2 3; do
+          DEB_FILE=$(wget -qO- "$BASE_URL" | grep -o 'linux-headers-[^" ]*amd64.deb' | head -1) && break
+          echo "retry $i ..."
+          sleep 5
+        done
         if [ -z "$DEB_FILE" ]; then
           echo "no headers for $KERNEL_VERSION"
           exit 1
