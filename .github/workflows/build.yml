@@ -1,0 +1,60 @@
+name: Build shadowmap module
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        kernel_version: [5.10.0, 6.1.0, 6.6.0]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install deps
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget
+
+    - name: Get kernel headers URL
+      id: get_headers_url
+      run: |
+        KERNEL_VERSION=${{ matrix.kernel_version }}
+        BASE_URL="http://kernel.ubuntu.com/~kernel-ppa/mainline/v${KERNEL_VERSION}/"
+        DEB_FILE=$(wget -qO- "$BASE_URL" | grep -o 'linux-headers-[^" ]*amd64.deb' | head -1)
+        if [ -z "$DEB_FILE" ]; then
+          echo "no headers for $KERNEL_VERSION"
+          exit 1
+        fi
+        echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
+        echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
+
+    - name: Download & install headers
+      run: |
+        DEB_FILE=${{ steps.get_headers_url.outputs.deb_file }}
+        BASE_URL=${{ steps.get_headers_url.outputs.base_url }}
+        wget "${BASE_URL}${DEB_FILE}"
+        sudo dpkg -i "${DEB_FILE}"
+
+    - name: Set KDIR
+      run: |
+        DEB_FILE=${{ steps.get_headers_url.outputs.deb_file }}
+        VERSION_STRING=$(echo "$DEB_FILE" | sed -n 's/^linux-headers-(.*)_[^_.]*_[^_.]*.deb$/\u0001/p')
+        if [ -z "$VERSION_STRING" ]; then
+          VERSION_STRING=$(echo "$DEB_FILE" | sed -n 's/^linux-headers-(.*)-generic_[^_.]*_[^_.]*.deb$/\u0001-generic/p')
+        fi
+        KERNEL_DIR="/usr/src/linux-headers-$VERSION_STRING"
+        if [ ! -d "$KERNEL_DIR" ]; then
+          echo "no dir $KERNEL_DIR"
+          exit 1
+        fi
+        echo "kernel_dir=$KERNEL_DIR" >> $GITHUB_ENV
+
+    - name: Build module
+      run: |
+        make KDIR=$kernel_dir
